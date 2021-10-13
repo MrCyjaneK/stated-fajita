@@ -32,8 +32,9 @@
 #include "display.h"
 #include "display-file.h"
 
-static const char qcom_display_state_file[] = "/sys/class/graphics/fb0/show_blank_event"; /* FIXME: support other displays */
+static const char qcom_display_state_file[] = "/sys/class/backlight/panel0-backlight/bl_power"; /* FIXME: support other displays */
 /* TODO: allow detecting screen status on other devices / allow feeding state from compositor */
+_Bool last = FALSE;
 
 struct _StatedDisplayFile
 {
@@ -76,16 +77,25 @@ on_qcom_display_state_changed (GFileMonitor      *monitor,
                              &file_contents, NULL, NULL))
       goto end;
 
-    if (g_strcmp0 (file_contents, "panel_power_on = 1\n") == 0) {
-      g_debug ("qcom display powered on!");
+    if (g_strcmp0 (file_contents, "0\n") == 0) {
+      //g_debug ("qcom display powered on!");
       self->on = TRUE;
     } else {
-      g_debug ("qcom display powered off!");
+      //g_debug ("qcom display powered off!");
       self->on = FALSE;
     }
-
-    /* We should manually notify since the property is read-only */
-    g_object_notify (G_OBJECT (self), "on");
+    if (last != self->on) {
+      if (self->on) {
+        g_debug ("qcom display powered on!");
+        autosleep_disable();
+      } else {
+        g_debug ("qcom display powered off!");
+        autosleep_enable();
+      }
+      last = self->on;
+      /* We should manually notify since the property is read-only */
+      g_object_notify (G_OBJECT (self), "on");
+    }
   }
 
 end:
@@ -112,15 +122,20 @@ stated_display_file_constructed (GObject *obj)
                                                       NULL);
 
     if (self->watched_file_monitor != NULL) {
-      g_signal_connect_object (self->watched_file_monitor, "changed",
-                               G_CALLBACK (on_qcom_display_state_changed), self,
-                               0);
+      //g_signal_connect_object (self->watched_file_monitor, "changed",
+      //                         G_CALLBACK (on_qcom_display_state_changed), self,
+      //                         0);
 
       /* Trigger initial check */
-      on_qcom_display_state_changed (self->watched_file_monitor,
-                                     self->watched_file,
-                                     NULL, G_FILE_MONITOR_EVENT_CHANGED,
-                                     self);
+      if (fork() == 0) {
+        while (TRUE) {
+          on_qcom_display_state_changed (self->watched_file_monitor,
+                                         self->watched_file,
+                                         NULL, G_FILE_MONITOR_EVENT_CHANGED,
+                                         self);
+          usleep(200000);
+        }
+      }
     }
 
   }

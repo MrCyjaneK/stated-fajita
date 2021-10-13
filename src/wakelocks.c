@@ -29,6 +29,8 @@
 
 #define G_LOG_DOMAIN "stated-wakelocks"
 
+#include "display.h"
+#include "display-file.h"
 #include "utils.h"
 
 static const char wakelock_lock_file[]   = "/sys/power/wake_lock";
